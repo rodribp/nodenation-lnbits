@@ -3,11 +3,24 @@ import { ArrowDownTrayIcon, BoltIcon, NumberedListIcon, XMarkIcon } from '@heroi
 
 function App() {
   const [balance, setBalance] = useState(0);
-  const [history, setHistory] = useState('');
+  const [history, setHistory] = useState([]);
   const [modal, setModal] = useState(null);
   const [invoice, setInvoice] = useState('');
   const [receiveData, setReceiveData] = useState({ amount: '', memo: '' });
   const [paymentDetails, setPaymentDetails] = useState(null);
+
+  fetch(import.meta.env.VITE_NODE_URL + 'api/v1/wallet',
+    {
+      method: "GET",
+      headers: {
+        "X-Api-Key": import.meta.env.VITE_INVOICE_KEY,
+        "Content-Type": "application/json"
+      }
+    }
+  ).then((response) => response.json())
+  .then(function (data) {
+    setBalance(data.balance / 1000);
+  }) 
 
   const closeModal = () => {
     setModal(null);
@@ -49,12 +62,11 @@ function App() {
         </button>
       </div>
       <button
-        className='flex items-center text-gray-400 text-xl gap-2 p-4'
+        className='flex items-center text-gray-400 text-xl gap-2 p-4 w-full justify-center'
         onClick={() => setModal('history')}
       >
         <NumberedListIcon className='size-8' /> History
       </button>
-
       {modal && (
         <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center'>
           <div className='bg-gray-900 rounded-lg p-6 text-white w-11/12 max-w-md'>
