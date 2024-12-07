@@ -1,47 +1,85 @@
-import { useState } from 'react';
-import { ArrowDownTrayIcon, BoltIcon, NumberedListIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useState, useEffect } from 'react';
+import { ArrowDownTrayIcon, BoltIcon, NumberedListIcon, XMarkIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
+import ConfettiExplosion from 'react-confetti-explosion';
+import { getWalletDetails, createInvoice, checkInvoice, decodeInvoice, payInvoice } from './helpers/api';
 
 function App() {
   const [balance, setBalance] = useState(0);
   const [history, setHistory] = useState([]);
+  const [paymentStatus, setPaymentStatus] = useState(false);
   const [modal, setModal] = useState(null);
   const [invoice, setInvoice] = useState('');
   const [receiveData, setReceiveData] = useState({ amount: '', memo: '' });
   const [paymentDetails, setPaymentDetails] = useState(null);
+  const [bolt, setBolt] = useState('');
+  const [paid, setPaid] = useState(false);
 
-  fetch(import.meta.env.VITE_NODE_URL + 'api/v1/wallet',
-    {
-      method: "GET",
-      headers: {
-        "X-Api-Key": import.meta.env.VITE_INVOICE_KEY,
-        "Content-Type": "application/json"
-      }
-    }
-  ).then((response) => response.json())
-  .then(function (data) {
-    setBalance(data.balance / 1000);
-  }) 
+  const getBalance = async () => {
+    const walletDetails = await getWalletDetails();
+    setBalance(walletDetails.balance / 1000)
+  }
 
   const closeModal = () => {
     setModal(null);
     setInvoice('');
     setReceiveData({ amount: '', memo: '' });
     setPaymentDetails(null);
+    setPaid(false);
   };
 
-  const generateInvoice = () => {
-    const genInvoice = "lnbcAPIINVOICE";
-    setInvoice(genInvoice);
+  const generateInvoice = async () => {
+    setPaymentStatus(false);
+    const invoice = await createInvoice(receiveData.amount, receiveData.memo)
+    setInvoice(invoice);
   };
 
-  const handleInvoiceSubmit = (e) => {
+  const handleInvoiceSubmit = async (e) => {
     e.preventDefault();
+
+    if (!bolt) {
+      alert('Invoice cannot be null')
+      return;
+    }
+
+    const invoiceDetails = await decodeInvoice(bolt);
+
     const invoiceData = {
       amount: "1000 sats",
       memo: "starbucks coffee payment",
     };
-    setPaymentDetails(invoiceData);
+    setPaymentDetails(invoiceDetails);
   };
+
+  const handlePayInvoice = async(e) => {
+    if (!bolt) {
+      alert('Invoice cannot be null')
+      return;
+    }
+    const data = await payInvoice(bolt);
+
+    if (data.checking_id) {
+      setPaid(true);
+      getBalance();
+    }
+  }
+
+  //Hook de react que verifica cuando haya un invoice, crea un intervalo que se ejecuta cada 3 segundos para verificar si este ya se ha pagado
+  useEffect(() => {
+    const hash = invoice.payment_hash;
+    getBalance();
+     
+    if (hash) {
+      var interval = setInterval(async () => {
+        const data = await checkInvoice(hash);
+
+        if (data.paid) {
+          clearInterval(interval);
+          getBalance();
+          setPaymentStatus(true);
+        }
+      }, 3000);
+    }
+  }, [invoice])
 
   return (
     <div className='font-[Rubik] h-screen flex flex-col gap-10 items-center justify-center bg-gray-800 text-white'>
@@ -114,10 +152,14 @@ function App() {
                     </>
                   ) : (
                     <div>
-                      <p className='mb-4'>Lightning invoice:</p>
-                      <code className='block bg-gray-800 p-4 rounded-lg text-center break-all'>
-                        {invoice}
-                      </code>
+                      <p className='mb-4'>{!paymentStatus ? 'Lightning Invoice:' : 'Invoice paid'}</p>
+                      {!paymentStatus ? (<code className='block bg-gray-800 p-4 rounded-lg text-center break-all'>
+                        {invoice.payment_request}
+                      </code>) : (
+                        <div className='flex justify-center items-center'>
+                          <CheckBadgeIcon className='size-24' /> <ConfettiExplosion/>
+                        </div>
+                      )}
                       <button
                         onClick={closeModal}
                         className='bg-gray-700 mt-4 w-full py-2 rounded-lg hover:bg-gray-600 transition duration-200'
@@ -138,6 +180,7 @@ function App() {
                           type='text'
                           placeholder='Paste an invoice, payment req or lnurl code'
                           className='w-full bg-gray-800 p-2 rounded-lg focus:outline-none'
+                          onChange={(e) => setBolt(e.target.value)}
                         />
                       </div>
                       <button
@@ -149,17 +192,27 @@ function App() {
                     </form>
                   ) : (
                     <div>
-                      <p className='mb-4'>Invoice Details:</p>
-                      <ul className='mb-4'>
-                        <li><strong>Amount:</strong> {paymentDetails.amount}</li>
-                        <li><strong>Memo:</strong> {paymentDetails.memo}</li>
+                      <p className='mb-4'> {!paid ? 'Invoice Details:' : 'Invoice Paid'}</p>
+                      {!paid ? (<><ul className='mb-4'>
+                        <li><strong>Amount:</strong> {paymentDetails.amount_msat /1000}</li>
+                        <li><strong>Memo:</strong> {paymentDetails.description}</li>
                       </ul>
                       <button
-                        onClick={() => alert('Done!')}
+                        onClick={handlePayInvoice}
                         className='bg-orange-400 w-full py-2 rounded-lg hover:bg-orange-500 transition duration-200'
                       >
                         Pay
+                      </button></>) : (<div className='flex flex-col jsutify-center items-center'>
+                        <CheckBadgeIcon className='size-24' /> <ConfettiExplosion/>
+                        <button
+                        onClick={closeModal}
+                        className='bg-gray-700 mt-4 w-full py-2 rounded-lg hover:bg-gray-600 transition duration-200'
+                      >
+                        Close
                       </button>
+                      </div>)}
+                      
+                      
                     </div>
                   )}
                 </>
